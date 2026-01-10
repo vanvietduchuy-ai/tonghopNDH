@@ -1,229 +1,199 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { User, UserRole } from '../types';
-import { Button, Input, Select } from './UI';
+import { Button, Input } from './UI';
 import { MockDB } from '../services/mockDatabase';
 
 interface UserManagementModalProps {
   isOpen: boolean;
   onClose: () => void;
   users: User[];
-  onUsersUpdated: () => void;
+  onUsersUpdated: () => Promise<any>;
 }
 
 export const UserManagementModal: React.FC<UserManagementModalProps> = ({ 
-  isOpen, onClose, users, onUsersUpdated 
+  isOpen, 
+  onClose, 
+  users,
+  onUsersUpdated 
 }) => {
-  const [view, setView] = useState<'LIST' | 'FORM'>('LIST');
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newUser, setNewUser] = useState({
+    username: '',
+    fullName: '',
+    role: UserRole.OFFICER,
+    password: '123123'
+  });
 
-  // Form State
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState<UserRole>(UserRole.OFFICER);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (isOpen) {
-      setView('LIST');
-      resetForm();
-    }
-  }, [isOpen]);
-
-  const resetForm = () => {
-    setUsername('');
-    setPassword('');
-    setFullName('');
-    setRole(UserRole.OFFICER);
-    setEditingUser(null);
-  };
-
-  const handleEditClick = (user: User) => {
-    setEditingUser(user);
-    setUsername(user.username);
-    setFullName(user.fullName);
-    setRole(user.role);
-    setPassword(''); // Don't show current password
-    setView('FORM');
-  };
-
-  const handleAddClick = () => {
-    resetForm();
-    setView('FORM');
-  };
-
-  const handleDeleteClick = async (id: string) => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa cán bộ này khỏi hệ thống?')) {
-      await MockDB.deleteUser(id);
-      onUsersUpdated();
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
+    
+    const user: User = {
+      id: `u${Date.now()}`,
+      username: newUser.username,
+      password: newUser.password,
+      isFirstLogin: true,
+      fullName: newUser.fullName,
+      role: newUser.role,
+      avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(newUser.fullName)}&background=059669&color=fff`
+    };
 
-    try {
-      if (editingUser) {
-        // Update existing user
-        const updatedUser: User = {
-          ...editingUser,
-          username,
-          fullName,
-          role,
-          // Only update password if provided, else keep old
-          password: password ? password : editingUser.password,
-          // If password changed by admin, force first login again? Maybe not for now.
-          avatarUrl: editingUser.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=random&color=fff`
-        };
-        await MockDB.updateUser(updatedUser);
-      } else {
-        // Create new user
-        // Basic check for unique username
-        if (users.some(u => u.username === username)) {
-          alert('Tên đăng nhập đã tồn tại!');
-          setIsSubmitting(false);
-          return;
-        }
+    await MockDB.addUser(user);
+    await onUsersUpdated();
+    
+    setNewUser({
+      username: '',
+      fullName: '',
+      role: UserRole.OFFICER,
+      password: '123123'
+    });
+    setShowAddForm(false);
+  };
 
-        const newUser: User = {
-          id: `u${Date.now()}`,
-          username,
-          password: password || '123123', // Default if empty
-          isFirstLogin: true,
-          fullName,
-          role,
-          avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=random&color=fff`
-        };
-        await MockDB.addUser(newUser);
-      }
-      onUsersUpdated();
-      setView('LIST');
-    } catch (error) {
-      console.error(error);
-      alert('Có lỗi xảy ra.');
-    } finally {
-      setIsSubmitting(false);
-    }
+  const handleDeleteUser = async (userId: string) => {
+    if (!window.confirm('Bạn có chắc muốn xóa người dùng này?')) return;
+    await MockDB.deleteUser(userId);
+    await onUsersUpdated();
+  };
+
+  const handleResetPassword = async (user: User) => {
+    if (!window.confirm(`Đặt lại mật khẩu về 123123 cho ${user.fullName}?`)) return;
+    const updatedUser = { ...user, password: '123123', isFirstLogin: true };
+    await MockDB.updateUser(updatedUser);
+    await onUsersUpdated();
+    alert('Đã đặt lại mật khẩu thành công!');
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh] border-t-4 border-blue-800">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-          <div>
-            <h2 className="text-xl font-bold text-blue-900 uppercase tracking-wide">
-              {view === 'LIST' ? 'Quản lý Nhân sự' : (editingUser ? 'Cập nhật thông tin' : 'Thêm cán bộ mới')}
-            </h2>
-            <p className="text-xs text-gray-500 mt-0.5">Quản trị viên hệ thống</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-red-600 transition-colors">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-          </button>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-blue-800 text-white p-6 rounded-t-xl flex justify-between items-center">
+          <h2 className="text-xl font-bold uppercase">👥 Quản lý nhân sự</h2>
+          <button onClick={onClose} className="text-white hover:text-gray-200">✕</button>
         </div>
-
-        {/* Content */}
-        <div className="p-6 overflow-y-auto flex-1 bg-white">
-          
-          {view === 'LIST' ? (
-            <>
-              <div className="flex justify-between items-center mb-4">
-                <div className="text-sm text-gray-600">Tổng số: <b>{users.length}</b> tài khoản</div>
-                <Button onClick={handleAddClick} icon={<span>+</span>}>Thêm cán bộ mới</Button>
-              </div>
-              
-              <div className="overflow-x-auto border rounded-lg shadow-sm">
-                <table className="w-full text-sm text-left text-gray-500">
-                  <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b">
-                    <tr>
-                      <th className="px-4 py-3">Họ và tên</th>
-                      <th className="px-4 py-3">Tên đăng nhập</th>
-                      <th className="px-4 py-3">Chức vụ</th>
-                      <th className="px-4 py-3 text-right">Hành động</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map(u => (
-                      <tr key={u.id} className="bg-white border-b hover:bg-gray-50">
-                        <td className="px-4 py-3 font-medium text-gray-900 flex items-center gap-3">
-                          <img src={u.avatarUrl} className="w-8 h-8 rounded-full" alt="" />
-                          {u.fullName}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-gray-600">{u.username}</td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-1 rounded text-xs font-bold ${u.role === UserRole.MANAGER ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
-                            {u.role === UserRole.MANAGER ? 'Lãnh đạo' : 'Cán bộ'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right space-x-2">
-                           <button onClick={() => handleEditClick(u)} className="text-blue-600 hover:underline font-medium">Sửa</button>
-                           <button onClick={() => handleDeleteClick(u.id)} className="text-red-600 hover:underline font-medium">Xóa</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
+        
+        <div className="p-6">
+          {!showAddForm ? (
+            <Button onClick={() => setShowAddForm(true)} className="mb-4">
+              + Thêm người dùng mới
+            </Button>
           ) : (
-            /* FORM VIEW */
-            <form onSubmit={handleSubmit} className="max-w-xl mx-auto space-y-5">
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                 <div className="col-span-2">
-                   <Input 
-                     label="Họ và tên" 
-                     value={fullName} 
-                     onChange={e => setFullName(e.target.value)} 
-                     required 
-                     placeholder="Nhập họ và tên đầy đủ"
-                   />
-                 </div>
-                 
-                 <Input 
-                   label="Tên đăng nhập" 
-                   value={username} 
-                   onChange={e => setUsername(e.target.value)} 
-                   required 
-                   placeholder="Viết liền không dấu"
-                   disabled={!!editingUser} // Prevent changing username for simplicity
-                 />
-                 
-                 <Select
-                   label="Chức vụ"
-                   value={role}
-                   onChange={e => setRole(e.target.value as UserRole)}
-                   options={[
-                     { value: UserRole.OFFICER, label: 'Cán bộ' },
-                     { value: UserRole.MANAGER, label: 'Lãnh đạo / Quản lý' }
-                   ]}
-                 />
-
-                 <div className="col-span-2 border-t pt-4 mt-2">
-                    <label className="block text-sm font-bold text-gray-700 mb-1">
-                      {editingUser ? 'Đổi mật khẩu (Để trống nếu không đổi)' : 'Mật khẩu khởi tạo'}
-                    </label>
-                    <input
-                      type="password"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-inner bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      placeholder={editingUser ? '******' : 'Mặc định: 123123'}
-                    />
-                    {!editingUser && <p className="text-xs text-gray-500 mt-1">Mặc định là 123123 nếu để trống.</p>}
-                 </div>
-               </div>
-
-               <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                 <Button type="button" variant="secondary" onClick={() => setView('LIST')}>Hủy bỏ</Button>
-                 <Button type="submit" isLoading={isSubmitting}>
-                   {editingUser ? 'Lưu thay đổi' : 'Thêm mới'}
-                 </Button>
-               </div>
+            <form onSubmit={handleAddUser} className="mb-6 p-4 bg-blue-50 rounded-lg space-y-3">
+              <h3 className="font-bold text-blue-900">Thêm người dùng mới</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Tên đăng nhập"
+                  value={newUser.username}
+                  onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                  required
+                />
+                <Input
+                  label="Họ và tên"
+                  value={newUser.fullName}
+                  onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Vai trò</label>
+                  <select
+                    value={newUser.role}
+                    onChange={(e) => setNewUser({ ...newUser, role: e.target.value as UserRole })}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value={UserRole.OFFICER}>Cán bộ</option>
+                    <option value={UserRole.MANAGER}>Lãnh đạo</option>
+                  </select>
+                </div>
+                <Input
+                  label="Mật khẩu mặc định"
+                  value={newUser.password}
+                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button type="submit">Thêm</Button>
+                <Button type="button" variant="secondary" onClick={() => setShowAddForm(false)}>Hủy</Button>
+              </div>
             </form>
           )}
+
+          <div className="space-y-4">
+            <h3 className="font-bold text-gray-800">Danh sách người dùng</h3>
+            
+            {/* Managers */}
+            <div>
+              <h4 className="text-sm font-bold text-red-700 uppercase mb-2">Ban lãnh đạo</h4>
+              <div className="space-y-2">
+                {users.filter(u => u.role === UserRole.MANAGER).map(user => (
+                  <div key={user.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-100">
+                    <div className="flex items-center gap-3">
+                      <img src={user.avatarUrl} className="w-10 h-10 rounded-full" alt="" />
+                      <div>
+                        <p className="font-bold text-gray-800">{user.fullName}</p>
+                        <p className="text-xs text-gray-500">@{user.username}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleResetPassword(user)}
+                        className="text-xs px-3 py-1 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200"
+                      >
+                        🔄 Reset MK
+                      </button>
+                      <button
+                        onClick={() => handleDeleteUser(user.id)}
+                        className="text-xs px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
+                      >
+                        🗑️ Xóa
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Officers */}
+            <div>
+              <h4 className="text-sm font-bold text-green-700 uppercase mb-2">Cán bộ</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {users.filter(u => u.role === UserRole.OFFICER).map(user => (
+                  <div key={user.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-100">
+                    <div className="flex items-center gap-2">
+                      <img src={user.avatarUrl} className="w-8 h-8 rounded-full" alt="" />
+                      <div>
+                        <p className="font-bold text-sm text-gray-800">{user.fullName}</p>
+                        <p className="text-[10px] text-gray-500">@{user.username}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => handleResetPassword(user)}
+                        className="text-[10px] px-2 py-1 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200"
+                      >
+                        🔄
+                      </button>
+                      <button
+                        onClick={() => handleDeleteUser(user.id)}
+                        className="text-[10px] px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 pt-4 border-t">
+            <Button variant="secondary" onClick={onClose} className="w-full">
+              Đóng
+            </Button>
+          </div>
         </div>
       </div>
     </div>
