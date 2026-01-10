@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, Task, UserRole, TaskStatus, RecurringType } from './types';
-import { MockDB } from './services/mockDatabase';
+import { NeonDB as MockDB } from './services/neonDatabase';
 import { Button, Input, StatusBadge, PriorityBadge, RecurringBadge } from './components/UI';
 import { TaskModal } from './components/TaskModal';
 import { UserManagementModal } from './components/UserManagementModal';
@@ -17,7 +17,7 @@ const App: React.FC = () => {
   // UI State
   const [isLoading, setIsLoading] = useState(true);
   const [showTaskModal, setShowTaskModal] = useState(false);
-  const [showUserModal, setShowUserModal] = useState(false); // NEW: Manage Users Modal
+  const [showUserModal, setShowUserModal] = useState(false);
   const [showChangePassModal, setShowChangePassModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
@@ -34,7 +34,6 @@ const App: React.FC = () => {
 
   // Initial Data Load
   const reloadData = async () => {
-    // Helper to reload data, useful after user updates
     const [fetchedUsers, fetchedTasks] = await Promise.all([
       MockDB.getUsers(),
       MockDB.getTasks()
@@ -47,6 +46,15 @@ const App: React.FC = () => {
   useEffect(() => {
     const initData = async () => {
       setIsLoading(true);
+      
+      // Initialize Neon database with default data
+      try {
+        await MockDB.initialize();
+        console.log('✅ Neon Database initialized successfully');
+      } catch (error) {
+        console.error('❌ Database initialization error:', error);
+      }
+      
       await reloadData();
       
       const savedUser = localStorage.getItem('currentUser');
@@ -365,7 +373,7 @@ const App: React.FC = () => {
         {/* AI Briefing Card */}
         {aiBriefing && (
           <div className="mb-8 bg-white border-l-4 border-yellow-500 rounded-r-xl p-6 relative overflow-hidden shadow-lg transform transition-all hover:scale-[1.01]">
-             <div className="absolute top-0 right-0 p-4 opacity-5 text-yellow-600 text-9xl -mt-4 -mr-4">⚠</div>
+             <div className="absolute top-0 right-0 p-4 opacity-5 text-yellow-600 text-9xl -mt-4 -mr-4">⚡</div>
              <h3 className="text-red-900 font-bold mb-3 flex items-center gap-2 uppercase text-sm tracking-wider">
                <span className="text-xl">⚡</span> Tổng hợp nhanh tình hình
              </h3>
