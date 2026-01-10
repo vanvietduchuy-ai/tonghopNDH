@@ -1,0 +1,5 @@
+{
+  "name": "Quản Lý Công Việc Cán Bộ (TaskForce)",
+  "description": "Ứng dụng quản lý và phân công công việc chuyên nghiệp cho tổ chức, tích hợp AI để hỗ trợ lập kế hoạch.",
+  "requestFramePermissions": []
+}
