@@ -1,30 +1,36 @@
 import { User, UserRole, Task, TaskStatus, TaskPriority, RecurringType } from '../types';
 
-// Default password for everyone
 const DEFAULT_PASS = '123123';
 
-const MOCK_USERS: User[] = [
-  // --- BAN LÃNH ĐẠO (Managers) ---
-  { id: 'u1', username: 'ldthang', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Lê Đình Thắng', role: UserRole.MANAGER, avatarUrl: 'https://ui-avatars.com/api/?name=Le+Dinh+Thang&background=ef4444&color=fff' }, 
-  { id: 'u2', username: 'lqtuan', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Lê Quốc Tuấn', role: UserRole.MANAGER, avatarUrl: 'https://ui-avatars.com/api/?name=Le+Quoc+Tuan&background=f97316&color=fff' },
-  { id: 'u3', username: 'nthao', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Nguyễn Thị Hảo', role: UserRole.MANAGER, avatarUrl: 'https://ui-avatars.com/api/?name=Nguyen+Thi+Hao&background=f97316&color=fff' },
+// Hàm tạo avatar URL ngắn gọn
+const getAvatar = (name: string, role: UserRole) => {
+  const bg = role === UserRole.MANAGER ? 'ef4444' : '059669';
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=${bg}&color=fff&size=128`;
+};
 
-  // --- CÁN BỘ (Officers) ---
-  { id: 'u4', username: 'ptadao', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Phan Thị Anh Đào', role: UserRole.OFFICER, avatarUrl: 'https://ui-avatars.com/api/?name=Phan+Thi+Anh+Dao&background=059669&color=fff' },
-  { id: 'u5', username: 'nthuong', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Nguyễn Thị Hường', role: UserRole.OFFICER, avatarUrl: 'https://ui-avatars.com/api/?name=Nguyen+Thi+Huong&background=059669&color=fff' },
-  { id: 'u6', username: 'nqtrang', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Nguyễn Quỳnh Trang', role: UserRole.OFFICER, avatarUrl: 'https://ui-avatars.com/api/?name=Nguyen+Quynh+Trang&background=059669&color=fff' },
-  { id: 'u7', username: 'cphang', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Cao Phương Hằng', role: UserRole.OFFICER, avatarUrl: 'https://ui-avatars.com/api/?name=Cao+Phuong+Hang&background=059669&color=fff' },
-  { id: 'u8', username: 'nttsuong', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Nguyễn Thị Thu Sương', role: UserRole.OFFICER, avatarUrl: 'https://ui-avatars.com/api/?name=Nguyen+Thi+Thu+Suong&background=059669&color=fff' },
-  { id: 'u9', username: 'ndnguyen', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Nguyễn Đình Nguyên', role: UserRole.OFFICER, avatarUrl: 'https://ui-avatars.com/api/?name=Nguyen+Dinh+Nguyen&background=059669&color=fff' },
-  { id: 'u10', username: 'hhquynh', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Hoàng Hương Quỳnh', role: UserRole.OFFICER, avatarUrl: 'https://ui-avatars.com/api/?name=Hoang+Huong+Quynh&background=059669&color=fff' },
-  { id: 'u11', username: 'nklinh', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Nguyễn Khánh Linh', role: UserRole.OFFICER, avatarUrl: 'https://ui-avatars.com/api/?name=Nguyen+Khanh+Linh&background=059669&color=fff' },
-  { id: 'u12', username: 'hphai', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Hoàng Phi Hải', role: UserRole.OFFICER, avatarUrl: 'https://ui-avatars.com/api/?name=Hoang+Phi+Hai&background=059669&color=fff' },
-  { id: 'u13', username: 'nthue', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Nguyễn Thị Như Huế', role: UserRole.OFFICER, avatarUrl: 'https://ui-avatars.com/api/?name=Nguyen+Thi+Nhu+Hue&background=059669&color=fff' },
-  { id: 'u14', username: 'vvdhuy', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Văn Viết Đức Huy', role: UserRole.OFFICER, avatarUrl: 'https://ui-avatars.com/api/?name=Van+Viet+Duc+Huy&background=059669&color=fff' },
-  { id: 'u15', username: 'lqchung', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Lê Quang Chung', role: UserRole.OFFICER, avatarUrl: 'https://ui-avatars.com/api/?name=Le+Quang+Chung&background=059669&color=fff' },
-  { id: 'u16', username: 'dvtdat', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Dương Văn Tiến Đạt', role: UserRole.OFFICER, avatarUrl: 'https://ui-avatars.com/api/?name=Duong+Van+Tien+Dat&background=059669&color=fff' },
+const MOCK_USERS: User[] = [
+  // Lãnh đạo (3 người)
+  { id: 'u1', username: 'ldthang', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Lê Đình Thắng', role: UserRole.MANAGER, avatarUrl: getAvatar('Lê Đình Thắng', UserRole.MANAGER) },
+  { id: 'u2', username: 'lqtuan', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Lê Quốc Tuấn', role: UserRole.MANAGER, avatarUrl: getAvatar('Lê Quốc Tuấn', UserRole.MANAGER) },
+  { id: 'u3', username: 'nthao', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Nguyễn Thị Hảo', role: UserRole.MANAGER, avatarUrl: getAvatar('Nguyễn Thị Hảo', UserRole.MANAGER) },
+
+  // Cán bộ (17 người)
+  { id: 'u4', username: 'ptadao', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Phan Thị Anh Đào', role: UserRole.OFFICER, avatarUrl: getAvatar('Phan Thị Anh Đào', UserRole.OFFICER) },
+  { id: 'u5', username: 'nqtrang', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Nguyễn Quỳnh Trang', role: UserRole.OFFICER, avatarUrl: getAvatar('Nguyễn Quỳnh Trang', UserRole.OFFICER) },
+  { id: 'u6', username: 'cphang', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Cao Phương Hằng', role: UserRole.OFFICER, avatarUrl: getAvatar('Cao Phương Hằng', UserRole.OFFICER) },
+  { id: 'u7', username: 'ntsuong', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Nguyễn Thị Thu Sương', role: UserRole.OFFICER, avatarUrl: getAvatar('Nguyễn Thị Thu Sương', UserRole.OFFICER) },
+  { id: 'u8', username: 'ndnguyen', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Nguyễn Đình Nguyên', role: UserRole.OFFICER, avatarUrl: getAvatar('Nguyễn Đình Nguyên', UserRole.OFFICER) },
+  { id: 'u9', username: 'hhquynh', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Hoàng Hương Quỳnh', role: UserRole.OFFICER, avatarUrl: getAvatar('Hoàng Hương Quỳnh', UserRole.OFFICER) },
+  { id: 'u10', username: 'nklinh', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Nguyễn Khánh Linh', role: UserRole.OFFICER, avatarUrl: getAvatar('Nguyễn Khánh Linh', UserRole.OFFICER) },
+  { id: 'u11', username: 'hphai', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Hoàng Phi Hải', role: UserRole.OFFICER, avatarUrl: getAvatar('Hoàng Phi Hải', UserRole.OFFICER) },
+  { id: 'u12', username: 'nthue', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Nguyễn Thị Như Huế', role: UserRole.OFFICER, avatarUrl: getAvatar('Nguyễn Thị Như Huế', UserRole.OFFICER) },
+  { id: 'u13', username: 'vvdhuy', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Văn Viết Đức Huy', role: UserRole.OFFICER, avatarUrl: getAvatar('Văn Viết Đức Huy', UserRole.OFFICER) },
+  { id: 'u14', username: 'lqchung', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Lê Quang Chung', role: UserRole.OFFICER, avatarUrl: getAvatar('Lê Quang Chung', UserRole.OFFICER) },
+  { id: 'u15', username: 'dvtdat', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Dương Văn Tiến Đạt', role: UserRole.OFFICER, avatarUrl: getAvatar('Dương Văn Tiến Đạt', UserRole.OFFICER) },
+  { id: 'u16', username: 'nttnguyen', password: DEFAULT_PASS, isFirstLogin: true, fullName: 'Nguyễn Thị Trí Nguyên', role: UserRole.OFFICER, avatarUrl: getAvatar('Nguyễn Thị Trí Nguyên', UserRole.OFFICER) },
 ];
 
+// Chỉ lưu 2 task mẫu để tiết kiệm dữ liệu
 const MOCK_TASKS: Task[] = [
   {
     id: 't1',
@@ -40,7 +46,6 @@ const MOCK_TASKS: Task[] = [
     priority: TaskPriority.HIGH,
     dueDate: new Date(Date.now() + 86400000 * 2).toISOString(),
     createdAt: Date.now(),
-    aiSuggestedSteps: ['Thu thập hồ sơ quy hoạch cũ', 'Khảo sát hiện trạng', 'Lập báo cáo so sánh']
   },
   {
     id: 't2',
@@ -49,7 +54,7 @@ const MOCK_TASKS: Task[] = [
     dispatchNumber: '45/KH-TNMT',
     issuingAuthority: 'Sở TN&MT',
     issueDate: '2024-05-20',
-    assigneeId: 'u15',
+    assigneeId: 'u14',
     creatorId: 'u2',
     recurring: RecurringType.MONTHLY,
     status: TaskStatus.PENDING,
@@ -131,7 +136,6 @@ export const MockDB = {
   login: async (username: string, passwordAttempt: string): Promise<User | null> => {
     await delay(500);
     const users = await MockDB.getUsers();
-    // In a real app, use bcrypt. Here simple string comparison.
     return users.find(u => u.username === username && u.password === passwordAttempt) || null;
   }
 };
