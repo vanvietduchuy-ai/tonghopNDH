@@ -1,302 +1,254 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Task, TaskPriority, TaskStatus, User, UserRole, RecurringType } from '../types';
-import { Button, Input, Select } from './UI';
+import React, { useState, useEffect } from 'react';
+import { Task, User, UserRole, TaskStatus, TaskPriority, RecurringType } from '../types';
+import { Button, Input } from './UI';
 import { GeminiService } from '../services/geminiService';
 
 interface TaskModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (task: Task) => void;
-  initialTask?: Task | null;
+  initialTask: Task | null;
   users: User[];
   currentUser: User;
 }
 
-export const TaskModal: React.FC<TaskModalProps> = ({ 
-  isOpen, onClose, onSave, initialTask, users, currentUser 
-}) => {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [dispatchNumber, setDispatchNumber] = useState('');
-  const [issuingAuthority, setIssuingAuthority] = useState('');
-  const [issueDate, setIssueDate] = useState('');
-  const [assigneeId, setAssigneeId] = useState('');
-  const [priority, setPriority] = useState<TaskPriority>(TaskPriority.MEDIUM);
-  const [dueDate, setDueDate] = useState('');
-  const [status, setStatus] = useState<TaskStatus>(TaskStatus.PENDING);
-  const [recurring, setRecurring] = useState<RecurringType>(RecurringType.NONE);
-  
-  const [isAiLoading, setIsAiLoading] = useState(false);
-  const [isImageScanning, setIsImageScanning] = useState(false);
-  const [aiSuggestedSteps, setAiSuggestedSteps] = useState<string[]>([]);
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
+export const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, initialTask, users, currentUser }) => {
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    dispatchNumber: '',
+    issuingAuthority: '',
+    issueDate: '',
+    assigneeId: '',
+    status: TaskStatus.PENDING,
+    priority: TaskPriority.MEDIUM,
+    recurring: RecurringType.NONE,
+    dueDate: '',
+  });
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     if (initialTask) {
-      setTitle(initialTask.title);
-      setDescription(initialTask.description);
-      setDispatchNumber(initialTask.dispatchNumber || '');
-      setIssuingAuthority(initialTask.issuingAuthority || '');
-      setIssueDate(initialTask.issueDate || '');
-      setAssigneeId(initialTask.assigneeId);
-      setPriority(initialTask.priority);
-      setDueDate(initialTask.dueDate.split('T')[0]);
-      setStatus(initialTask.status);
-      setRecurring(initialTask.recurring || RecurringType.NONE);
-      setAiSuggestedSteps(initialTask.aiSuggestedSteps || []);
+      setFormData({
+        title: initialTask.title,
+        description: initialTask.description,
+        dispatchNumber: initialTask.dispatchNumber || '',
+        issuingAuthority: initialTask.issuingAuthority || '',
+        issueDate: initialTask.issueDate || '',
+        assigneeId: initialTask.assigneeId,
+        status: initialTask.status,
+        priority: initialTask.priority,
+        recurring: initialTask.recurring || RecurringType.NONE,
+        dueDate: initialTask.dueDate.split('T')[0],
+      });
     } else {
-      resetForm();
+      setFormData({
+        title: '',
+        description: '',
+        dispatchNumber: '',
+        issuingAuthority: '',
+        issueDate: '',
+        assigneeId: users.find(u => u.role === UserRole.OFFICER)?.id || '',
+        status: TaskStatus.PENDING,
+        priority: TaskPriority.MEDIUM,
+        recurring: RecurringType.NONE,
+        dueDate: new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0],
+      });
     }
-  }, [initialTask, isOpen]);
-
-  const resetForm = () => {
-    setTitle('');
-    setDescription('');
-    setDispatchNumber('');
-    setIssuingAuthority('');
-    setIssueDate('');
-    // Default assignee: Try to pick first Officer, fallback to anyone but me
-    const defaultAssignee = users.find(u => u.role === UserRole.OFFICER)?.id || users[0]?.id;
-    setAssigneeId(defaultAssignee);
-    setPriority(TaskPriority.MEDIUM);
-    setDueDate(new Date().toISOString().split('T')[0]);
-    setStatus(TaskStatus.PENDING);
-    setRecurring(RecurringType.NONE);
-    setAiSuggestedSteps([]);
-  };
-
-  const handleGenerateAI = async () => {
-    if (!title) return;
-    setIsAiLoading(true);
-    const result = await GeminiService.suggestTaskDetails(title);
-    setDescription(prev => prev || result.description);
-    setAiSuggestedSteps(result.steps);
-    if (result.dueDate) {
-      setDueDate(result.dueDate);
-    }
-    setIsAiLoading(false);
-  };
+  }, [initialTask, users]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsImageScanning(true);
-    try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64String = reader.result as string;
-        const result = await GeminiService.extractDocumentDetails(base64String, file.type);
-        
-        if (result.abstract) setTitle(result.abstract);
-        if (result.dispatchNumber) setDispatchNumber(result.dispatchNumber);
-        if (result.issuingAuthority) setIssuingAuthority(result.issuingAuthority);
-        if (result.issueDate) setIssueDate(result.issueDate);
-        if (result.summary) setDescription(result.summary);
-        if (result.deadline) setDueDate(result.deadline);
+    setIsProcessing(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const base64 = evt.target?.result as string;
+      const mimeType = file.type;
+      
+      const extracted = await GeminiService.extractDocumentDetails(base64, mimeType);
+      setFormData(prev => ({
+        ...prev,
+        title: extracted.abstract || prev.title,
+        description: extracted.summary || prev.description,
+        dispatchNumber: extracted.dispatchNumber || prev.dispatchNumber,
+        issuingAuthority: extracted.issuingAuthority || prev.issuingAuthority,
+        issueDate: extracted.issueDate || prev.issueDate,
+        dueDate: extracted.deadline || prev.dueDate,
+      }));
+      setIsProcessing(false);
+    };
+    reader.readAsDataURL(file);
+  };
 
-        setIsImageScanning(false);
-      };
-      reader.readAsDataURL(file);
-    } catch (err) {
-      console.error(err);
-      setIsImageScanning(false);
-    }
+  const handleAISuggest = async () => {
+    if (!formData.title) return;
+    setIsProcessing(true);
+    const result = await GeminiService.suggestTaskDetails(formData.title);
+    setFormData(prev => ({
+      ...prev,
+      description: result.description,
+      dueDate: result.dueDate || prev.dueDate,
+    }));
+    setIsProcessing(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const task: Task = {
-      id: initialTask ? initialTask.id : Date.now().toString(),
-      title,
-      description,
-      dispatchNumber,
-      issuingAuthority,
-      issueDate,
-      assigneeId,
-      creatorId: initialTask ? initialTask.creatorId : currentUser.id,
-      status,
-      priority,
-      recurring,
-      dueDate: new Date(dueDate).toISOString(),
-      createdAt: initialTask ? initialTask.createdAt : Date.now(),
-      aiSuggestedSteps
+      id: initialTask?.id || `t${Date.now()}`,
+      ...formData,
+      dueDate: new Date(formData.dueDate).toISOString(),
+      creatorId: currentUser.id,
+      createdAt: initialTask?.createdAt || Date.now(),
     };
     onSave(task);
   };
 
   if (!isOpen) return null;
 
-  const isManager = currentUser.role === UserRole.MANAGER;
-
-  // Generate options for Assignee Select
-  // Sort: Managers first, then Officers.
-  const sortedUsers = [...users].sort((a, b) => {
-    if (a.role === b.role) return a.fullName.localeCompare(b.fullName);
-    return a.role === UserRole.MANAGER ? -1 : 1;
-  });
-
-  const assigneeOptions = sortedUsers.map(u => ({
-    value: u.id,
-    label: `${u.role === UserRole.MANAGER ? '⭐ Lãnh đạo:' : '👤 Cán bộ:'} ${u.fullName}`
-  }));
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[95vh] border-t-4 border-red-700">
-        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-gray-50 to-white">
-          <div>
-            <h2 className="text-xl font-bold text-red-800 uppercase tracking-wide">
-              {initialTask ? (isManager ? 'Cập nhật Công việc' : 'Chi tiết văn bản') : 'Giao việc / Xử lý văn bản'}
-            </h2>
-            <p className="text-xs text-gray-500 mt-0.5">Hệ thống hỗ trợ trích xuất thông tin tự động từ AI</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-red-600 transition-colors">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-          </button>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-red-800 text-white p-6 rounded-t-xl">
+          <h2 className="text-xl font-bold uppercase">{initialTask ? 'Cập nhật công việc' : 'Giao việc mới'}</h2>
         </div>
-
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto flex-1 space-y-6">
-          
-          <div className="bg-yellow-50/50 p-4 rounded-lg border border-yellow-100">
-             <div className="flex justify-between items-end mb-2">
-                <label className="block text-sm font-bold text-red-900">Trích yếu văn bản / Tên công việc <span className="text-red-500">*</span></label>
-                {isManager && (
-                 <>
-                  <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
-                  <button 
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isImageScanning}
-                    className="text-xs flex items-center gap-1.5 text-white bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 font-medium px-3 py-1.5 rounded-md shadow-md transition-all active:scale-95"
-                  >
-                    {isImageScanning ? '⏳ Đang quét...' : '📷 Quét ảnh văn bản'}
-                  </button>
-                 </>
-               )}
-             </div>
-             <textarea
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-inner focus:outline-none focus:ring-2 focus:ring-red-500 resize-none h-20 text-gray-800 font-medium"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Ví dụ: V/v Thực hiện báo cáo..."
-                required
-                disabled={!isManager}
-             />
-          </div>
-
-          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 shadow-sm">
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 border-b pb-1">Thông tin văn bản gốc</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Input label="Số hiệu" value={dispatchNumber} onChange={(e) => setDispatchNumber(e.target.value)} disabled={!isManager} />
-              <Input label="Cơ quan ban hành" value={issuingAuthority} onChange={(e) => setIssuingAuthority(e.target.value)} disabled={!isManager} />
-              <Input type="date" label="Ngày ban hành" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} disabled={!isManager} />
+        
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {currentUser.role === UserRole.MANAGER && (
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+              <label className="block text-sm font-bold text-blue-900 mb-2">📷 Tải ảnh văn bản (AI tự động trích xuất)</label>
+              <input type="file" accept="image/*" onChange={handleImageUpload} className="text-sm" />
             </div>
-          </div>
+          )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Select
-              label="Người thực hiện"
-              value={assigneeId}
-              onChange={(e) => setAssigneeId(e.target.value)}
-              disabled={!isManager}
-              options={assigneeOptions}
+          <Input
+            label="Trích yếu / Tiêu đề công việc"
+            value={formData.title}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            required
+          />
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Số hiệu"
+              value={formData.dispatchNumber}
+              onChange={(e) => setFormData({ ...formData, dispatchNumber: e.target.value })}
             />
-            
-            <Select
-              label="Tính chất công việc"
-              value={recurring}
-              onChange={(e) => setRecurring(e.target.value as RecurringType)}
-              disabled={!isManager}
-              className="bg-purple-50 border-purple-200 text-purple-900"
-              options={[
-                { value: RecurringType.NONE, label: 'Công việc một lần' },
-                { value: RecurringType.WEEKLY, label: 'Định kỳ Hàng Tuần' },
-                { value: RecurringType.MONTHLY, label: 'Định kỳ Hàng Tháng' },
-                { value: RecurringType.QUARTERLY, label: 'Định kỳ Hàng Quý' },
-              ]}
+            <Input
+              label="Cơ quan ban hành"
+              value={formData.issuingAuthority}
+              onChange={(e) => setFormData({ ...formData, issuingAuthority: e.target.value })}
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Select
-              label="Độ khẩn"
-              value={priority}
-              onChange={(e) => setPriority(e.target.value as TaskPriority)}
-              disabled={!isManager}
-              options={[
-                { value: TaskPriority.LOW, label: 'Thường' },
-                { value: TaskPriority.MEDIUM, label: 'Trung bình' },
-                { value: TaskPriority.HIGH, label: 'Cao' },
-                { value: TaskPriority.URGENT, label: 'Hỏa tốc' },
-              ]}
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Ngày ban hành"
+              type="date"
+              value={formData.issueDate}
+              onChange={(e) => setFormData({ ...formData, issueDate: e.target.value })}
             />
-            <Input 
-              type="date" 
-              label="Hạn hoàn thành" 
-              value={dueDate} 
-              onChange={(e) => setDueDate(e.target.value)}
-              disabled={!isManager}
+            <Input
+              label="Hạn hoàn thành"
+              type="date"
+              value={formData.dueDate}
+              onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
               required
-              className="font-bold text-red-800"
-            />
-            <Select
-              label="Trạng thái"
-              value={status}
-              onChange={(e) => setStatus(e.target.value as TaskStatus)}
-              options={[
-                { value: TaskStatus.PENDING, label: 'Chờ xử lý' },
-                { value: TaskStatus.IN_PROGRESS, label: 'Đang thực hiện' },
-                { value: TaskStatus.COMPLETED, label: 'Hoàn thành' },
-                { value: TaskStatus.CANCELLED, label: 'Trả lại/Hủy' },
-              ]}
             />
           </div>
 
           <div>
-            <div className="flex gap-2 items-center mb-1">
-               <label className="block text-sm font-bold text-gray-700">Nội dung chỉ đạo / Ghi chú</label>
-               {isManager && (
-                 <button 
-                  type="button" 
-                  onClick={handleGenerateAI}
-                  disabled={isAiLoading || !title} 
-                  className="text-xs text-red-600 hover:text-red-800 font-bold uppercase tracking-wider"
-                >
-                  {isAiLoading ? '...' : '✨ AI Gợi ý nội dung & hạn'}
-                </button>
-               )}
-            </div>
+            <label className="block text-sm font-bold text-gray-700 mb-1">Nội dung chỉ đạo</label>
             <textarea
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-inner focus:outline-none focus:ring-2 focus:ring-red-500 h-24 resize-none"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              disabled={!isManager}
-              placeholder="Nhập nội dung chỉ đạo thực hiện..."
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+              rows={4}
+              required
             />
+            {currentUser.role === UserRole.MANAGER && (
+              <button
+                type="button"
+                onClick={handleAISuggest}
+                disabled={!formData.title || isProcessing}
+                className="mt-2 text-xs text-blue-600 hover:underline"
+              >
+                ✨ Gợi ý bằng AI
+              </button>
+            )}
           </div>
 
-          {aiSuggestedSteps.length > 0 && (
-            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 shadow-sm">
-              <h4 className="text-sm font-bold text-yellow-800 mb-2 flex items-center">
-                <span className="mr-2">💡</span> Gợi ý các bước xử lý
-              </h4>
-              <ul className="list-disc list-inside text-sm text-yellow-900 space-y-1">
-                {aiSuggestedSteps.map((step, idx) => (
-                  <li key={idx}>{step}</li>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-1">Giao cho</label>
+              <select
+                value={formData.assigneeId}
+                onChange={(e) => setFormData({ ...formData, assigneeId: e.target.value })}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                required
+                disabled={currentUser.role === UserRole.OFFICER}
+              >
+                {users.filter(u => u.role === UserRole.OFFICER).map(u => (
+                  <option key={u.id} value={u.id}>{u.fullName}</option>
                 ))}
-              </ul>
+              </select>
             </div>
-          )}
-        </form>
 
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-          <Button variant="secondary" onClick={onClose}>Đóng</Button>
-          {(isManager || initialTask) && (
-            <Button onClick={handleSubmit}>{initialTask ? 'Lưu cập nhật' : 'Giao việc'}</Button>
-          )}
-        </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-1">Độ ưu tiên</label>
+              <select
+                value={formData.priority}
+                onChange={(e) => setFormData({ ...formData, priority: e.target.value as TaskPriority })}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
+                <option value={TaskPriority.LOW}>Thấp</option>
+                <option value={TaskPriority.MEDIUM}>Trung bình</option>
+                <option value={TaskPriority.HIGH}>Cao</option>
+                <option value={TaskPriority.URGENT}>Khẩn cấp</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-1">Trạng thái</label>
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value as TaskStatus })}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
+                <option value={TaskStatus.PENDING}>Chờ xử lý</option>
+                <option value={TaskStatus.IN_PROGRESS}>Đang thực hiện</option>
+                <option value={TaskStatus.COMPLETED}>Hoàn thành</option>
+                <option value={TaskStatus.CANCELLED}>Đã hủy</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-1">Lặp lại</label>
+              <select
+                value={formData.recurring}
+                onChange={(e) => setFormData({ ...formData, recurring: e.target.value as RecurringType })}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                disabled={currentUser.role === UserRole.OFFICER}
+              >
+                <option value={RecurringType.NONE}>Không</option>
+                <option value={RecurringType.WEEKLY}>Hàng tuần</option>
+                <option value={RecurringType.MONTHLY}>Hàng tháng</option>
+                <option value={RecurringType.QUARTERLY}>Hàng quý</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4 border-t">
+            <Button type="submit" className="flex-1" isLoading={isProcessing}>
+              {initialTask ? 'Cập nhật' : 'Tạo công việc'}
+            </Button>
+            <Button type="button" variant="secondary" onClick={onClose}>Hủy</Button>
+          </div>
+        </form>
       </div>
     </div>
   );
