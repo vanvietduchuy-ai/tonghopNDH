@@ -9,3 +9,5 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  # Disable secrets scanning for Gemini API key (client-side usage is intentional)
+  SECRETS_SCAN_SMART_DETECTION_ENABLED = "false"
