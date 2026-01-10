@@ -1,7 +1,14 @@
 import { Handler } from '@netlify/functions';
 import { neon } from '@neondatabase/serverless';
 
-const sql = neon(process.env.DATABASE_URL!);
+// Use Netlify's Neon database URL
+const DATABASE_URL = process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL;
+
+if (!DATABASE_URL) {
+  throw new Error('DATABASE_URL not configured. Please enable Neon integration on Netlify.');
+}
+
+const sql = neon(DATABASE_URL);
 
 // Initialize database tables
 async function initDB() {
@@ -34,15 +41,14 @@ async function initDB() {
         status TEXT NOT NULL,
         priority TEXT NOT NULL,
         due_date TIMESTAMP NOT NULL,
-        created_at BIGINT NOT NULL,
-        FOREIGN KEY (assignee_id) REFERENCES users(id),
-        FOREIGN KEY (creator_id) REFERENCES users(id)
+        created_at BIGINT NOT NULL
       )
     `;
 
-    console.log('Database initialized successfully');
+    console.log('✅ Database tables initialized successfully');
   } catch (error) {
-    console.error('Database initialization error:', error);
+    console.error('❌ Database initialization error:', error);
+    throw error;
   }
 }
 
@@ -70,7 +76,7 @@ export const handler: Handler = async (event) => {
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify({ success: true }),
+          body: JSON.stringify({ success: true, message: 'Database initialized' }),
         };
 
       // Get all users
@@ -87,6 +93,7 @@ export const handler: Handler = async (event) => {
         await sql`
           INSERT INTO users (id, username, password, is_first_login, full_name, role, avatar_url)
           VALUES (${data.id}, ${data.username}, ${data.password}, ${data.isFirstLogin}, ${data.fullName}, ${data.role}, ${data.avatarUrl})
+          ON CONFLICT (id) DO NOTHING
         `;
         return {
           statusCode: 200,
@@ -113,6 +120,7 @@ export const handler: Handler = async (event) => {
 
       // Delete user
       case 'deleteUser':
+        await sql`DELETE FROM tasks WHERE assignee_id = ${data.id} OR creator_id = ${data.id}`;
         await sql`DELETE FROM users WHERE id = ${data.id}`;
         return {
           statusCode: 200,
@@ -151,10 +159,10 @@ export const handler: Handler = async (event) => {
             UPDATE tasks 
             SET title = ${data.title},
                 description = ${data.description},
-                dispatch_number = ${data.dispatchNumber},
-                issuing_authority = ${data.issuingAuthority},
-                issue_date = ${data.issueDate},
-                recurring = ${data.recurring},
+                dispatch_number = ${data.dispatchNumber || null},
+                issuing_authority = ${data.issuingAuthority || null},
+                issue_date = ${data.issueDate || null},
+                recurring = ${data.recurring || 'NONE'},
                 assignee_id = ${data.assigneeId},
                 status = ${data.status},
                 priority = ${data.priority},
@@ -169,8 +177,8 @@ export const handler: Handler = async (event) => {
               issue_date, recurring, assignee_id, creator_id, status, 
               priority, due_date, created_at
             ) VALUES (
-              ${data.id}, ${data.title}, ${data.description}, ${data.dispatchNumber},
-              ${data.issuingAuthority}, ${data.issueDate}, ${data.recurring},
+              ${data.id}, ${data.title}, ${data.description}, ${data.dispatchNumber || null},
+              ${data.issuingAuthority || null}, ${data.issueDate || null}, ${data.recurring || 'NONE'},
               ${data.assigneeId}, ${data.creatorId}, ${data.status},
               ${data.priority}, ${data.dueDate}, ${data.createdAt}
             )
@@ -199,11 +207,14 @@ export const handler: Handler = async (event) => {
         };
     }
   } catch (error) {
-    console.error('Database error:', error);
+    console.error('❌ Database error:', error);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: String(error) }),
+      body: JSON.stringify({ 
+        error: 'Database error',
+        message: error instanceof Error ? error.message : String(error)
+      }),
     };
   }
 };
