@@ -1,14 +1,23 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+// Support both Vite env and process.env (for Netlify)
+const getApiKey = (): string => {
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    return import.meta.env.VITE_GEMINI_API_KEY || '';
+  }
+  // Fallback for build time
+  return '';
+};
+
+const apiKey = getApiKey();
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export const GeminiService = {
   /**
    * Generates description and steps.
    */
   suggestTaskDetails: async (taskTitle: string): Promise<{ description: string; steps: string[]; dueDate?: string }> => {
-    if (!apiKey) {
+    if (!ai) {
       return { description: "Vui lòng cấu hình API Key.", steps: [] };
     }
 
@@ -56,7 +65,7 @@ export const GeminiService = {
     summary: string;
     deadline: string;
   }> => {
-    if (!apiKey) throw new Error("Missing API Key");
+    if (!ai) throw new Error("Missing API Key");
 
     try {
       const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
@@ -97,7 +106,7 @@ export const GeminiService = {
   },
 
   generateBriefing: async (tasks: any[]): Promise<string> => {
-     if (!apiKey) return "Cần có API Key.";
+     if (!ai) return "Cần có API Key.";
      try {
        const tasksStr = tasks.map(t => `- ${t.title} [Hạn: ${t.dueDate}]`).join('\n');
        const prompt = `Tóm tắt tình hình công việc cho lãnh đạo, giọng văn hành chính, trang trọng (tối đa 50 từ): \n${tasksStr}`;
