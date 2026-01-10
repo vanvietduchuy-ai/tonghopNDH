@@ -37,8 +37,9 @@ export const Input: React.FC<{
   type?: string;
   placeholder?: string;
   required?: boolean;
+  disabled?: boolean;
   className?: string;
-}> = ({ label, value, onChange, type = 'text', placeholder, required, className = '' }) => {
+}> = ({ label, value, onChange, type = 'text', placeholder, required, disabled, className = '' }) => {
   return (
     <div className="space-y-1">
       <label className="block text-sm font-bold text-gray-700">{label}</label>
@@ -48,7 +49,8 @@ export const Input: React.FC<{
         onChange={onChange}
         placeholder={placeholder}
         required={required}
-        className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all ${className}`}
+        disabled={disabled}
+        className={`w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''} ${className}`}
       />
     </div>
   );
