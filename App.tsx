@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, Task, UserRole, TaskStatus, RecurringType } from './types';
-import { NeonDB as MockDB } from './services/neonDatabase';
+import { TTLSync as MockDB } from './services/ttlSyncService';
 import { Button, Input, StatusBadge, PriorityBadge, RecurringBadge } from './components/UI';
 import { TaskModal } from './components/TaskModal';
 import { UserManagementModal } from './components/UserManagementModal';
@@ -26,15 +26,44 @@ const App: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  const reloadData = async () => {
-    const [fetchedUsers, fetchedTasks] = await Promise.all([
-      MockDB.getUsers(),
-      MockDB.getTasks()
-    ]);
-    setUsers(fetchedUsers);
-    setTasks(fetchedTasks);
-    return { users: fetchedUsers, tasks: fetchedTasks };
+ const reloadData = async () => {
+  const [fetchedUsers, fetchedTasks] = await Promise.all([
+    MockDB.getUsers(),
+    MockDB.getTasks()
+  ]);
+  setUsers(fetchedUsers);
+  setTasks(fetchedTasks);
+  return { users: fetchedUsers, tasks: fetchedTasks };
   };
+  const refreshCacheStats = () => {
+  const stats = MockDB.getSyncStats();
+  setCacheStats(stats);
+  };
+  <button 
+  onClick={async () => {
+    setIsLoading(true);
+    await MockDB.forceSync();
+    await reloadData();
+    refreshCacheStats();
+    setIsLoading(false);
+    alert('✅ Synced with cloud!');
+  }}
+  className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 font-bold"
+>
+  🔄 Force Sync
+</button>
+
+// Clear cache giờ là clear local:
+<button 
+  onClick={() => {
+    MockDB.clearLocal();
+    refreshCacheStats();
+    alert('🗑️ Local data cleared! Reload page to re-sync.');
+  }}
+  className="text-xs bg-red-600 text-white px-3 py-1.5 rounded hover:bg-red-700 font-bold"
+>
+  🗑️ Clear Local
+</button>
 
   useEffect(() => {
     const initData = async () => {
