@@ -1,6 +1,6 @@
 import { User, Task, UserRole } from '../types';
 
-const API_URL = '/.netlify/functions/db';
+const API_URL = '/.netlify/functions/db-v2';
 
 async function callAPI(action: string, data?: any) {
   const response = await fetch(API_URL, {
@@ -206,5 +206,21 @@ export const NeonDB = {
       role: user.role,
       avatarUrl: user.avatar_url,
     };
+  },
+
+  // Cleanup tasks cũ hơn TTL
+  cleanup: async (): Promise<number> => {
+    const result = await callAPI('cleanup');
+    return result.deletedCount || 0;
+  },
+
+  // Batch save tasks (để sync nhanh hơn)
+  batchSaveTasks: async (tasks: Task[]): Promise<void> => {
+    await callAPI('batchSaveTasks', { tasks });
+  },
+
+  // Get sync statistics
+  getSyncStats: async (): Promise<any> => {
+    return await callAPI('getSyncStats');
   },
 };
