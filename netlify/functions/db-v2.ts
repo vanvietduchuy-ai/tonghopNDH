@@ -10,10 +10,12 @@ if (!DATABASE_URL) {
 
 const sql = neon(DATABASE_URL);
 
+const TTL_DAYS = 3; // Tasks tự động xóa sau 3 ngày
+
 // Initialize database tables
 async function initDB() {
   try {
-    // Users table
+    // Users table - Lưu vĩnh viễn
     await sql`
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
@@ -26,7 +28,7 @@ async function initDB() {
       )
     `;
 
-    // Tasks table
+    // Tasks table - Có TTL
     await sql`
       CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
@@ -41,14 +43,42 @@ async function initDB() {
         status TEXT NOT NULL,
         priority TEXT NOT NULL,
         due_date TIMESTAMP NOT NULL,
-        created_at BIGINT NOT NULL
+        created_at BIGINT NOT NULL,
+        synced_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW()) * 1000
       )
+    `;
+
+    // Tạo index để tăng tốc cleanup
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_tasks_synced_at ON tasks(synced_at)
     `;
 
     console.log('✅ Database tables initialized successfully');
   } catch (error) {
     console.error('❌ Database initialization error:', error);
     throw error;
+  }
+}
+
+// Cleanup tasks cũ hơn TTL_DAYS
+async function cleanupOldTasks() {
+  try {
+    const cutoffTime = Date.now() - (TTL_DAYS * 24 * 60 * 60 * 1000);
+    
+    const result = await sql`
+      DELETE FROM tasks 
+      WHERE synced_at < ${cutoffTime}
+      RETURNING id
+    `;
+
+    if (result.length > 0) {
+      console.log(`🗑️ Cleaned up ${result.length} tasks older than ${TTL_DAYS} days`);
+    }
+    
+    return result.length;
+  } catch (error) {
+    console.error('❌ Cleanup error:', error);
+    return 0;
   }
 }
 
@@ -78,6 +108,21 @@ export const handler: Handler = async (event) => {
           headers,
           body: JSON.stringify({ success: true, message: 'Database initialized' }),
         };
+
+      // Cleanup old tasks (gọi định kỳ hoặc trước mỗi lần sync)
+      case 'cleanup':
+        const deletedCount = await cleanupOldTasks();
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            deletedCount,
+            message: `Cleaned up ${deletedCount} tasks` 
+          }),
+        };
+
+      // ==================== USERS ====================
 
       // Get all users
       case 'getUsers':
@@ -140,9 +185,17 @@ export const handler: Handler = async (event) => {
           body: JSON.stringify(user || null),
         };
 
-      // Get all tasks
+      // ==================== TASKS ====================
+
+      // Get all tasks (chỉ lấy tasks còn trong TTL)
       case 'getTasks':
-        const tasks = await sql`SELECT * FROM tasks ORDER BY created_at DESC`;
+        // Cleanup trước khi lấy
+        await cleanupOldTasks();
+        
+        const tasks = await sql`
+          SELECT * FROM tasks 
+          ORDER BY created_at DESC
+        `;
         return {
           statusCode: 200,
           headers,
@@ -151,10 +204,11 @@ export const handler: Handler = async (event) => {
 
       // Save task (insert or update)
       case 'saveTask':
+        const currentTime = Date.now();
         const existing = await sql`SELECT id FROM tasks WHERE id = ${data.id}`;
         
         if (existing.length > 0) {
-          // Update
+          // Update - cập nhật synced_at để reset TTL
           await sql`
             UPDATE tasks 
             SET title = ${data.title},
@@ -166,7 +220,8 @@ export const handler: Handler = async (event) => {
                 assignee_id = ${data.assigneeId},
                 status = ${data.status},
                 priority = ${data.priority},
-                due_date = ${data.dueDate}
+                due_date = ${data.dueDate},
+                synced_at = ${currentTime}
             WHERE id = ${data.id}
           `;
         } else {
@@ -175,12 +230,12 @@ export const handler: Handler = async (event) => {
             INSERT INTO tasks (
               id, title, description, dispatch_number, issuing_authority, 
               issue_date, recurring, assignee_id, creator_id, status, 
-              priority, due_date, created_at
+              priority, due_date, created_at, synced_at
             ) VALUES (
               ${data.id}, ${data.title}, ${data.description}, ${data.dispatchNumber || null},
               ${data.issuingAuthority || null}, ${data.issueDate || null}, ${data.recurring || 'NONE'},
               ${data.assigneeId}, ${data.creatorId}, ${data.status},
-              ${data.priority}, ${data.dueDate}, ${data.createdAt}
+              ${data.priority}, ${data.dueDate}, ${data.createdAt}, ${currentTime}
             )
           `;
         }
@@ -190,6 +245,57 @@ export const handler: Handler = async (event) => {
           body: JSON.stringify({ success: true, task: data }),
         };
 
+      // Batch save tasks (để sync nhanh hơn)
+      case 'batchSaveTasks':
+        const currentTimestamp = Date.now();
+        const tasksToSave = data.tasks || [];
+        
+        for (const task of tasksToSave) {
+          const existingTask = await sql`SELECT id FROM tasks WHERE id = ${task.id}`;
+          
+          if (existingTask.length > 0) {
+            // Update
+            await sql`
+              UPDATE tasks 
+              SET title = ${task.title},
+                  description = ${task.description},
+                  dispatch_number = ${task.dispatchNumber || null},
+                  issuing_authority = ${task.issuingAuthority || null},
+                  issue_date = ${task.issueDate || null},
+                  recurring = ${task.recurring || 'NONE'},
+                  assignee_id = ${task.assigneeId},
+                  status = ${task.status},
+                  priority = ${task.priority},
+                  due_date = ${task.dueDate},
+                  synced_at = ${currentTimestamp}
+              WHERE id = ${task.id}
+            `;
+          } else {
+            // Insert
+            await sql`
+              INSERT INTO tasks (
+                id, title, description, dispatch_number, issuing_authority, 
+                issue_date, recurring, assignee_id, creator_id, status, 
+                priority, due_date, created_at, synced_at
+              ) VALUES (
+                ${task.id}, ${task.title}, ${task.description}, ${task.dispatchNumber || null},
+                ${task.issuingAuthority || null}, ${task.issueDate || null}, ${task.recurring || 'NONE'},
+                ${task.assigneeId}, ${task.creatorId}, ${task.status},
+                ${task.priority}, ${task.dueDate}, ${task.createdAt}, ${currentTimestamp}
+              )
+            `;
+          }
+        }
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            saved: tasksToSave.length 
+          }),
+        };
+
       // Delete task
       case 'deleteTask':
         await sql`DELETE FROM tasks WHERE id = ${data.id}`;
@@ -197,6 +303,25 @@ export const handler: Handler = async (event) => {
           statusCode: 200,
           headers,
           body: JSON.stringify({ success: true }),
+        };
+
+      // Get sync statistics
+      case 'getSyncStats':
+        const totalTasks = await sql`SELECT COUNT(*) as count FROM tasks`;
+        const oldTasks = await sql`
+          SELECT COUNT(*) as count FROM tasks 
+          WHERE synced_at < ${Date.now() - (TTL_DAYS * 24 * 60 * 60 * 1000)}
+        `;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            totalTasks: totalTasks[0].count,
+            oldTasks: oldTasks[0].count,
+            ttlDays: TTL_DAYS,
+            nextCleanup: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+          }),
         };
 
       default:
